@@ -4,6 +4,7 @@ import { config } from './config'
 import { t, type Lang } from './i18n'
 import {
   getClient,
+  getClientByEmail,
   saveClient,
   updateClient,
   type UserState,
@@ -295,19 +296,36 @@ export function setupBot(bot: Telegraf) {
 
     try {
       let tenantId = client.tenantId
-      let password = client.password ?? genPassword()
+      let password = client.password
 
+      // Email бойынша бұрынғы tenant тексеру (1 email = 1 tenant)
       if (!tenantId) {
-        const tenant = await createTenant(client.name, client.email, password)
-        tenantId = tenant.id
-        updateClient(chatId, {
-          tenantId,
-          password,
-          status: 'trial',
-          trialStartDate: new Date().toISOString(),
-        })
-      } else if (client.status !== 'trial' && client.status !== 'active') {
-        updateClient(chatId, { status: 'trial', trialStartDate: new Date().toISOString() })
+        const existingByEmail = getClientByEmail(client.email)
+        if (existingByEmail?.tenantId && existingByEmail?.password) {
+          tenantId = existingByEmail.tenantId
+          password = existingByEmail.password
+          updateClient(chatId, {
+            tenantId,
+            password,
+            status: 'trial',
+            trialStartDate: new Date().toISOString(),
+          })
+        } else {
+          password = password ?? genPassword()
+          const tenant = await createTenant(client.name, client.email, password)
+          tenantId = tenant.id
+          updateClient(chatId, {
+            tenantId,
+            password,
+            status: 'trial',
+            trialStartDate: new Date().toISOString(),
+          })
+        }
+      } else {
+        password = password ?? genPassword()
+        if (client.status !== 'trial' && client.status !== 'active') {
+          updateClient(chatId, { status: 'trial', trialStartDate: new Date().toISOString() })
+        }
       }
 
       await bot.telegram.sendMessage(

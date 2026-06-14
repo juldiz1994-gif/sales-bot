@@ -82,3 +82,8 @@ export function updateClient(chatId: number, updates: Partial<ClientRecord>): vo
 export function getAllClients(): ClientRecord[] {
   return Object.values(load().clients)
 }
+
+export function getClientByEmail(email: string): ClientRecord | null {
+  const all = Object.values(load().clients)
+  return all.find(c => c.email.toLowerCase() === email.toLowerCase()) ?? null
+}
