@@ -24,7 +24,7 @@ export const t = {
     pending:
       '⏳ Тіркелу сұрауыңыз жіберілді!\n\nАдминистратор растаған соң (5–30 минут) кіру мәліметтері жіберіледі.',
 
-    approved: (email: string, password: string, url: string, whatsapp: string) =>
+    approved: (email: string, password: string, url: string) =>
       `✅ *Қош келдіңіз! Аккаунтыңыз дайын!*
 
 🌐 Платформа: ${url}
@@ -35,8 +35,7 @@ export const t = {
 
 Кіріп, WhatsApp немесе Telegram ботыңызды қосыңыз.
 
-🎁 *Instagram ботын қосу үшін WhatsApp-қа жазыңыз:*
-wa.me/${whatsapp}`,
+🎁 *Ақылы жоспар алғаннан кейін Instagram ботты сыйлыққа жасап береміз!*`,
 
     rejected:
       '❌ Тіркелу сұрауы қабылданбады.\nСұрақ болса @support байланысыңыз.',
@@ -102,7 +101,7 @@ wa.me/${whatsapp}`,
     pending:
       '⏳ Заявка на регистрацию отправлена!\n\nПосле подтверждения администратором (5–30 минут) вам придут данные для входа.',
 
-    approved: (email: string, password: string, url: string, whatsapp: string) =>
+    approved: (email: string, password: string, url: string) =>
       `✅ *Добро пожаловать! Аккаунт готов!*
 
 🌐 Платформа: ${url}
@@ -113,8 +112,7 @@ wa.me/${whatsapp}`,
 
 Войдите и подключите WhatsApp или Telegram бот.
 
-🎁 *Для подключения Instagram бота напишите в WhatsApp:*
-wa.me/${whatsapp}`,
+🎁 *При покупке платного плана — Instagram бот в подарок!*`,
 
     rejected:
       '❌ Заявка не подтверждена.\nПо вопросам обращайтесь @support.',

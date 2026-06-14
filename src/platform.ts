@@ -25,7 +25,7 @@ export async function createTenant(name: string, email: string, password: string
       const existing = err.response.data
       if (existing?.id) return { id: existing.id }
       const list = await api.get('/api/tenants')
-      const found = (list.data as any[]).find((t: any) => t.ownerEmail === email || t.email === email)
+      const found = (list.data as any[]).find((t: any) => t.owner?.email === email || t.ownerEmail === email || t.email === email)
       if (found?.id) return { id: found.id }
     }
     throw err
