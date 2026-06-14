@@ -310,7 +310,12 @@ export function setupBot(bot: Telegraf) {
         { parse_mode: 'Markdown' },
       )
 
-      await ctx.editMessageCaption(`✅ РАСТАЛДЫ — ${client.name} (${client.email})`)
+      const msg1 = ctx.callbackQuery?.message
+      if (msg1 && 'caption' in msg1) {
+        await ctx.editMessageCaption(`✅ РАСТАЛДЫ — ${client.name} (${client.email})`)
+      } else {
+        await ctx.editMessageText(`✅ РАСТАЛДЫ — ${client.name} (${client.email})`)
+      }
     } catch (err) {
       console.error('[approve_new]', err)
       await ctx.telegram.sendMessage(config.ADMIN_CHAT_ID, `❌ Tenant жасау қатесі:\n${err}`)
@@ -344,7 +349,12 @@ export function setupBot(bot: Telegraf) {
         { parse_mode: 'Markdown' },
       )
 
-      await ctx.editMessageCaption(`✅ ЖАҢАРТЫЛДЫ — ${client.name} дейін ${formatDate(paidUntil.toISOString())}`)
+      const msg2 = ctx.callbackQuery?.message
+      if (msg2 && 'caption' in msg2) {
+        await ctx.editMessageCaption(`✅ ЖАҢАРТЫЛДЫ — ${client.name} дейін ${formatDate(paidUntil.toISOString())}`)
+      } else {
+        await ctx.editMessageText(`✅ ЖАҢАРТЫЛДЫ — ${client.name} дейін ${formatDate(paidUntil.toISOString())}`)
+      }
     } catch (err) {
       console.error('[approve_renewal]', err)
       await ctx.telegram.sendMessage(config.ADMIN_CHAT_ID, `❌ Активация қатесі:\n${err}`)
@@ -368,6 +378,11 @@ export function setupBot(bot: Telegraf) {
     )
 
     await ctx.answerCbQuery('❌ Бас тартылды')
-    await ctx.editMessageCaption(`❌ БАС ТАРТЫЛДЫ — ${client.name}`)
+    const msg3 = ctx.callbackQuery?.message
+    if (msg3 && 'caption' in msg3) {
+      await ctx.editMessageCaption(`❌ БАС ТАРТЫЛДЫ — ${client.name}`)
+    } else {
+      await ctx.editMessageText(`❌ БАС ТАРТЫЛДЫ — ${client.name}`)
+    }
   })
 }
