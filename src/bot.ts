@@ -276,12 +276,15 @@ export function setupBot(bot: Telegraf) {
         })
 
         if (isExisting) {
-          // 409 — бұрыннан бар tenant, пароль платформада басқа болуы мүмкін
+          // 409 — бұрыннан бар tenant, тегін мерзім пайдаланылған
           await bot.telegram.sendMessage(
             chatId,
-            lang === 'kz'
-              ? `✅ *Сіз бұрыннан тіркелгенсіз!*\n\nТелеграм чатта жоғары жылжыңыз — бұрын жіберілген хабарда логин мен пароліңіз бар.\n\n🌐 Платформа: ${config.PLATFORM_URL}`
-              : `✅ *Вы уже зарегистрированы!*\n\nПрокрутите чат вверх в Telegram — там есть ваш логин и пароль.\n\n🌐 Платформа: ${config.PLATFORM_URL}`,
+            t[lang].status_suspended,
+            { parse_mode: 'Markdown' },
+          )
+          await bot.telegram.sendMessage(
+            chatId,
+            t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
             { parse_mode: 'Markdown' },
           )
         } else {
