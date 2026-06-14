@@ -294,15 +294,21 @@ export function setupBot(bot: Telegraf) {
     await ctx.answerCbQuery('⏳ Жасалуда...')
 
     try {
-      const password = genPassword()
-      const tenant = await createTenant(client.name, client.email, password)
+      let tenantId = client.tenantId
+      let password = client.password ?? genPassword()
 
-      updateClient(chatId, {
-        tenantId: tenant.id,
-        password,
-        status: 'trial',
-        trialStartDate: new Date().toISOString(),
-      })
+      if (!tenantId) {
+        const tenant = await createTenant(client.name, client.email, password)
+        tenantId = tenant.id
+        updateClient(chatId, {
+          tenantId,
+          password,
+          status: 'trial',
+          trialStartDate: new Date().toISOString(),
+        })
+      } else if (client.status !== 'trial' && client.status !== 'active') {
+        updateClient(chatId, { status: 'trial', trialStartDate: new Date().toISOString() })
+      }
 
       await bot.telegram.sendMessage(
         chatId,
