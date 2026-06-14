@@ -167,7 +167,8 @@ export function setupBot(bot: Telegraf) {
 
   // ─── Тіл таңдау ────────────────────────────────────────────────
 
-  async function handleLang(ctx: Parameters<Parameters<typeof bot.action>[1]>[0], lang: Lang) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function handleLang(ctx: any, lang: Lang) {
     const chatId = ctx.chat!.id
     const state = states.get(chatId)
     if (!state || state.step !== 'lang') { await ctx.answerCbQuery(); return }

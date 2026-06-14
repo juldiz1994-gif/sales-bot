@@ -25,7 +25,7 @@ export interface ClientRecord {
 }
 
 // Боттағы қадам күйі (жады — сервер өшсе жоғалады, бірақ жеткілікті)
-export type Step = 'lang' | 'name' | 'email' | 'done'
+export type Step = 'lang' | 'name' | 'email' | 'payment' | 'done'
 
 export interface UserState {
   step: Step
