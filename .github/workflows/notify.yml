@@ -1,0 +1,26 @@
+name: Telegram Deploy Notify
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Деплой басталды — хабарла
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.ADMIN_CHAT_ID }} \
+            -d parse_mode=Markdown \
+            -d text="🚀 *Sales Bot деплой басталды*%0A%0AРailway жаңартуда... ~2-3 минут күтіңіз."
+
+      - name: 3 минут күту (Railway деплой уақыты)
+        run: sleep 180
+
+      - name: Деплой бітті — хабарла
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.ADMIN_CHAT_ID }} \
+            -d parse_mode=Markdown \
+            -d text="✅ *Sales Bot деплой бітті!*%0A%0AБот жұмыс істеп тұр 🟢"
