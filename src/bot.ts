@@ -4,7 +4,7 @@ import { config } from './config'
 import { t, type Lang } from './i18n'
 import {
   getClient,
-  getClientByEmail,
+  getAllClients,
   saveClient,
   updateClient,
   type UserState,
@@ -249,14 +249,17 @@ export function setupBot(bot: Telegraf) {
       state.step = 'done'
       states.set(chatId, state)
 
-      // Тіркелу сұрауын сақтап, adminге жіберу
+      // Бұрынғы tenant ақпаратын сақтау (қайта тіркелгенде жоғалмасын)
+      const prevClient = getClient(chatId)
+      const sameEmail = prevClient?.email?.toLowerCase() === email
+
       saveClient({
         chatId,
         lang,
         name: state.name ?? '',
         email,
-        tenantId: null,
-        password: null,
+        tenantId: sameEmail ? (prevClient?.tenantId ?? null) : null,
+        password: sameEmail ? (prevClient?.password ?? null) : null,
         status: 'pending',
         trialStartDate: null,
         paidUntil: null,
@@ -298,12 +301,17 @@ export function setupBot(bot: Telegraf) {
       let tenantId = client.tenantId
       let password = client.password
 
-      // Email бойынша бұрынғы tenant тексеру (1 email = 1 tenant)
+      // Email бойынша бұрынғы tenant тексеру (1 email = 1 tenant, барлық chatId арасынан)
       if (!tenantId) {
-        const existingByEmail = getClientByEmail(client.email)
-        if (existingByEmail?.tenantId && existingByEmail?.password) {
-          tenantId = existingByEmail.tenantId
-          password = existingByEmail.password
+        const existingWithTenant = getAllClients().find(c =>
+          c.email.toLowerCase() === client.email.toLowerCase() &&
+          c.tenantId != null &&
+          c.password != null,
+        )
+
+        if (existingWithTenant) {
+          tenantId = existingWithTenant.tenantId!
+          password = existingWithTenant.password!
           updateClient(chatId, {
             tenantId,
             password,
@@ -322,7 +330,6 @@ export function setupBot(bot: Telegraf) {
           })
         }
       } else {
-        password = password ?? genPassword()
         if (client.status !== 'trial' && client.status !== 'active') {
           updateClient(chatId, { status: 'trial', trialStartDate: new Date().toISOString() })
         }
