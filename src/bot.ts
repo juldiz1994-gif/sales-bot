@@ -253,10 +253,12 @@ export function setupBot(bot: Telegraf) {
         }
 
         // 3) Жаңа tenant жасау
+        let isExisting = false
         if (!tenantId) {
           password = genPasswordForEmail(email)
           const tenant = await createTenant(state.name ?? '', email, password)
           tenantId = tenant.id
+          isExisting = tenant.isExisting
         }
 
         saveClient({
@@ -273,16 +275,27 @@ export function setupBot(bot: Telegraf) {
           createdAt: new Date().toISOString(),
         })
 
-        await bot.telegram.sendMessage(
-          chatId,
-          t[lang].approved(email, password!, config.PLATFORM_URL),
-          { parse_mode: 'Markdown' },
-        )
+        if (isExisting) {
+          // 409 — бұрыннан бар tenant, пароль платформада басқа болуы мүмкін
+          await bot.telegram.sendMessage(
+            chatId,
+            lang === 'kz'
+              ? `✅ *Сіз бұрыннан тіркелгенсіз!*\n\nТелеграм чатта жоғары жылжыңыз — бұрын жіберілген хабарда логин мен пароліңіз бар.\n\n🌐 Платформа: ${config.PLATFORM_URL}`
+              : `✅ *Вы уже зарегистрированы!*\n\nПрокрутите чат вверх в Telegram — там есть ваш логин и пароль.\n\n🌐 Платформа: ${config.PLATFORM_URL}`,
+            { parse_mode: 'Markdown' },
+          )
+        } else {
+          await bot.telegram.sendMessage(
+            chatId,
+            t[lang].approved(email, password!, config.PLATFORM_URL),
+            { parse_mode: 'Markdown' },
+          )
+        }
 
         // Admin-ге ақпарат (батон жоқ)
         await bot.telegram.sendMessage(
           config.ADMIN_CHAT_ID,
-          `📝 *Жаңа клиент тіркелді*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}`,
+          `📝 *${isExisting && !password ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}`,
           { parse_mode: 'Markdown' },
         )
       } catch (err) {

@@ -10,7 +10,7 @@ const api = axios.create({
   timeout: 15_000,
 })
 
-export async function createTenant(name: string, email: string, password: string): Promise<{ id: string }> {
+export async function createTenant(name: string, email: string, password: string): Promise<{ id: string; isExisting: boolean }> {
   try {
     const res = await api.post('/api/tenants', {
       name,
@@ -19,14 +19,14 @@ export async function createTenant(name: string, email: string, password: string
       timezone: 'Asia/Almaty',
       aiPersona: '',
     })
-    return res.data as { id: string }
+    return { ...(res.data as { id: string }), isExisting: false }
   } catch (err: any) {
     if (err?.response?.status === 409) {
       const existing = err.response.data
-      if (existing?.id) return { id: existing.id }
+      if (existing?.id) return { id: existing.id, isExisting: true }
       const list = await api.get('/api/tenants')
       const found = (list.data as any[]).find((t: any) => t.owner?.email === email || t.ownerEmail === email || t.email === email)
-      if (found?.id) return { id: found.id }
+      if (found?.id) return { id: found.id, isExisting: true }
     }
     throw err
   }
