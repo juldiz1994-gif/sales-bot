@@ -25,13 +25,15 @@ export interface ClientRecord {
   createdAt: string
 }
 
-export type Step = 'lang' | 'name' | 'email' | 'payment' | 'done'
+export type Step = 'lang' | 'name' | 'email' | 'persona' | 'payment' | 'done'
 
 export interface UserState {
   step: Step
   lang?: Lang
   name?: string
   email?: string
+  persona?: string
+  personaMode?: 'pdf' | 'url' | 'text'
 }
 
 // ─── In-memory cache ─────────────────────────────────────────────

@@ -21,6 +21,20 @@ export const t = {
     ask_email: '📧 Email адресіңізді жазыңыз:\n_(платформаға кіру үшін пайдаланылады)_',
     invalid_email: '❌ Email дұрыс емес. Қайта жазыңыз:\n_(мысалы: yourname@gmail.com)_',
 
+    ask_persona:
+      '📄 *AI Persona — бизнесіңіз туралы ақпарат таңдаңыз:*\n\nAI клиенттерге сіздің атыңыздан жауап береді.',
+
+    persona_reading_url: '⏳ Сайт оқылуда...',
+    persona_reading_pdf: '⏳ PDF оқылуда...',
+    persona_received: '✅ Ақпарат алынды!',
+    persona_mode_pdf: '📎 PDF жіберіңіз ⬇️',
+    persona_mode_url: '🔗 Сілтемені жіберіңіз ⬇️',
+    persona_mode_text: '✍️ Мәтін жазыңыз ⬇️',
+    skip_btn: '⏩ Өткізіп жібер',
+    btn_pdf: '📎 PDF',
+    btn_url: '🔗 Сілтеме',
+    btn_text: '✍️ Мәтін',
+
     pending:
       '⏳ Тіркелу сұрауыңыз жіберілді!\n\nАдминистратор растаған соң (5–30 минут) кіру мәліметтері жіберіледі.',
 
@@ -97,6 +111,20 @@ export const t = {
       '📧 Введите ваш Email:\n_(используется для входа на платформу)_',
     invalid_email:
       '❌ Неверный Email. Введите снова:\n_(например: yourname@gmail.com)_',
+
+    ask_persona:
+      '📄 *AI Persona — расскажите AI о вашем бизнесе:*\n\nAI будет отвечать клиентам от вашего имени.',
+
+    persona_reading_url: '⏳ Читаю сайт...',
+    persona_reading_pdf: '⏳ Читаю PDF...',
+    persona_received: '✅ Информация получена!',
+    persona_mode_pdf: '📎 Отправьте PDF файл ⬇️',
+    persona_mode_url: '🔗 Отправьте ссылку ⬇️',
+    persona_mode_text: '✍️ Напишите текст ⬇️',
+    skip_btn: '⏩ Пропустить',
+    btn_pdf: '📎 PDF',
+    btn_url: '🔗 Ссылка',
+    btn_text: '✍️ Текст',
 
     pending:
       '⏳ Заявка на регистрацию отправлена!\n\nПосле подтверждения администратором (5–30 минут) вам придут данные для входа.',

@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto'
+import axios from 'axios'
 import { Telegraf, Markup } from 'telegraf'
 import { message } from 'telegraf/filters'
 import { config } from './config'
@@ -12,15 +13,10 @@ import {
   type ClientRecord,
 } from './store'
 import { createTenant, activateTenant } from './platform'
+import { detectUrl, extractFromUrl, extractFromPdf } from './persona'
 
 const states = new Map<number, UserState>()
 
-function genPassword(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#'
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-}
-
-// Email бойынша детерминистік пароль — қайта тіркелгенде бірдей пароль шығады
 function genPasswordForEmail(email: string): string {
   const h = createHmac('sha256', 'sb-pw-salt-2024').update(email.toLowerCase()).digest('hex')
   return h.slice(0, 8) + 'Zq9!'
@@ -35,7 +31,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-// ─── Төлем чегін adminге жіберу (тек төлем үшін) ────────────────
+// ─── Төлем чегін adminге жіберу ──────────────────────────────────
 
 async function notifyPayment(
   bot: Telegraf,
@@ -75,6 +71,92 @@ async function handleCheck(
     await bot.telegram.sendMessage(chatId, t[client.lang].check_received, { parse_mode: 'Markdown' })
     await notifyPayment(bot, { chatId, name: client.name, email: client.email, tenantId: client.tenantId }, fileId, fileType)
   }
+}
+
+// ─── Tenant жасап, credentials жіберу ───────────────────────────
+
+async function finishRegistration(bot: Telegraf, chatId: number, state: UserState) {
+  const lang = state.lang ?? 'ru'
+  const email = state.email!
+  const persona = state.persona ?? ''
+
+  await bot.telegram.sendMessage(chatId, '⏳', { parse_mode: 'Markdown' })
+
+  try {
+    let tenantId: string | null = null
+    let password: string | null = null
+
+    // 1) Осы chatId-де сол email бар ма?
+    const prevClient = getClient(chatId)
+    if (prevClient?.email?.toLowerCase() === email && prevClient.tenantId && prevClient.password) {
+      tenantId = prevClient.tenantId
+      password = prevClient.password
+    }
+
+    // 2) Басқа chatId-де сол email tenant бар ма?
+    if (!tenantId) {
+      const found = getAllClients().find(c =>
+        c.email.toLowerCase() === email &&
+        c.tenantId != null &&
+        c.password != null &&
+        c.chatId !== chatId,
+      )
+      if (found) {
+        tenantId = found.tenantId
+        password = found.password
+      }
+    }
+
+    // 3) Жаңа tenant жасау
+    let isExisting = false
+    if (!tenantId) {
+      password = genPasswordForEmail(email)
+      const tenant = await createTenant(state.name ?? '', email, password, persona)
+      tenantId = tenant.id
+      isExisting = tenant.isExisting
+    }
+
+    saveClient({
+      chatId,
+      lang,
+      name: state.name ?? '',
+      email,
+      tenantId,
+      password,
+      status: 'trial',
+      trialStartDate: new Date().toISOString(),
+      paidUntil: null,
+      trialReminderSent: false,
+      createdAt: new Date().toISOString(),
+    })
+
+    if (isExisting) {
+      await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
+      await bot.telegram.sendMessage(chatId, t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE), { parse_mode: 'Markdown' })
+    } else {
+      await bot.telegram.sendMessage(chatId, t[lang].approved(email, password!, config.PLATFORM_URL), { parse_mode: 'Markdown' })
+    }
+
+    await bot.telegram.sendMessage(
+      config.ADMIN_CHAT_ID,
+      `📝 *${isExisting ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}${persona ? `\n\n📄 AI Persona:\n${persona.slice(0, 400)}${persona.length > 400 ? '...' : ''}` : ''}`,
+      { parse_mode: 'Markdown' },
+    )
+  } catch (err) {
+    console.error('[auto-register]', err)
+    await bot.telegram.sendMessage(
+      chatId,
+      lang === 'kz'
+        ? '❌ Техникалық қате. Жақын арада шешіледі, қайталаңыз.'
+        : '❌ Техническая ошибка. Попробуйте позже.',
+    )
+    await bot.telegram.sendMessage(
+      config.ADMIN_CHAT_ID,
+      `⚠️ Тіркелу қатесі:\n👤 ${state.name}\n📧 ${email}\n🆔 ${chatId}\n\n${err}`,
+    )
+  }
+
+  states.delete(chatId)
 }
 
 // ─── Бот орнату ──────────────────────────────────────────────────
@@ -181,6 +263,40 @@ export function setupBot(bot: Telegraf) {
     await ctx.reply(t[lang].ask_name, { parse_mode: 'Markdown' })
   })
 
+  // ─── Persona батон өңдегіштер ───────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function handlePersonaAction(ctx: any, mode: 'pdf' | 'url' | 'text' | 'skip') {
+    const chatId = ctx.chat!.id
+    const state = states.get(chatId)
+    if (!state || state.step !== 'persona') { await ctx.answerCbQuery(); return }
+    await ctx.answerCbQuery()
+
+    if (mode === 'skip') {
+      state.persona = ''
+      states.set(chatId, state)
+      await finishRegistration(bot, chatId, state)
+      return
+    }
+
+    const lang = state.lang ?? 'ru'
+    state.personaMode = mode
+    states.set(chatId, state)
+
+    const modeMsg = mode === 'pdf'
+      ? t[lang].persona_mode_pdf
+      : mode === 'url'
+        ? t[lang].persona_mode_url
+        : t[lang].persona_mode_text
+
+    await ctx.editMessageText(`${t[lang].ask_persona}\n\n${modeMsg}`, { parse_mode: 'Markdown' })
+  }
+
+  bot.action('persona_pdf',  (ctx) => handlePersonaAction(ctx, 'pdf'))
+  bot.action('persona_url',  (ctx) => handlePersonaAction(ctx, 'url'))
+  bot.action('persona_text', (ctx) => handlePersonaAction(ctx, 'text'))
+  bot.action('skip_persona', (ctx) => handlePersonaAction(ctx, 'skip'))
+
   // ─── Мәтін өңдеу ───────────────────────────────────────────────
 
   bot.on(message('text'), async (ctx) => {
@@ -213,7 +329,7 @@ export function setupBot(bot: Telegraf) {
       return
     }
 
-    // Email — автоматты тіркелу
+    // Email
     if (state.step === 'email') {
       const email = text.toLowerCase()
       if (!email.includes('@') || !email.includes('.')) {
@@ -221,128 +337,108 @@ export function setupBot(bot: Telegraf) {
         return
       }
 
-      state.email = email
-      state.step = 'done'
-      states.set(chatId, state)
-
-      await ctx.reply('⏳', { parse_mode: 'Markdown' })
-
-      try {
-        let tenantId: string | null = null
-        let password: string | null = null
-
-        // 0) Осы chatId бұрын БАСҚА email-мен тіркелген бе? → тегін мерзім берілмейді
-        const prevClient = getClient(chatId)
-        if (prevClient && prevClient.email.toLowerCase() !== email) {
-          await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
-          await bot.telegram.sendMessage(
-            chatId,
-            t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-            { parse_mode: 'Markdown' },
-          )
-          states.delete(chatId)
-          return
-        }
-
-        // 1) Бұрыннан осы chatId-де сол email бар ма?
-        if (prevClient?.email?.toLowerCase() === email && prevClient.tenantId && prevClient.password) {
-          tenantId = prevClient.tenantId
-          password = prevClient.password
-        }
-
-        // 2) Басқа chatId-де сол email tenant бар ма?
-        if (!tenantId) {
-          const found = getAllClients().find(c =>
-            c.email.toLowerCase() === email &&
-            c.tenantId != null &&
-            c.password != null &&
-            c.chatId !== chatId,
-          )
-          if (found) {
-            tenantId = found.tenantId
-            password = found.password
-          }
-        }
-
-        // 3) Жаңа tenant жасау
-        let isExisting = false
-        if (!tenantId) {
-          password = genPasswordForEmail(email)
-          const tenant = await createTenant(state.name ?? '', email, password)
-          tenantId = tenant.id
-          isExisting = tenant.isExisting
-        }
-
-        saveClient({
-          chatId,
-          lang,
-          name: state.name ?? '',
-          email,
-          tenantId,
-          password,
-          status: 'trial',
-          trialStartDate: new Date().toISOString(),
-          paidUntil: null,
-          trialReminderSent: false,
-          createdAt: new Date().toISOString(),
-        })
-
-        if (isExisting) {
-          // 409 — бұрыннан бар tenant, тегін мерзім пайдаланылған
-          await bot.telegram.sendMessage(
-            chatId,
-            t[lang].status_suspended,
-            { parse_mode: 'Markdown' },
-          )
-          await bot.telegram.sendMessage(
-            chatId,
-            t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-            { parse_mode: 'Markdown' },
-          )
-        } else {
-          await bot.telegram.sendMessage(
-            chatId,
-            t[lang].approved(email, password!, config.PLATFORM_URL),
-            { parse_mode: 'Markdown' },
-          )
-        }
-
-        // Admin-ге ақпарат (батон жоқ)
+      // Осы chatId бұрын БАСҚА email-мен тіркелген бе? → тегін мерзім берілмейді
+      const prevClient = getClient(chatId)
+      if (prevClient && prevClient.email.toLowerCase() !== email) {
+        await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
         await bot.telegram.sendMessage(
-          config.ADMIN_CHAT_ID,
-          `📝 *${isExisting && !password ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}`,
+          chatId,
+          t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
           { parse_mode: 'Markdown' },
         )
-      } catch (err) {
-        console.error('[auto-register]', err)
-        await ctx.reply(
-          lang === 'kz'
-            ? '❌ Техникалық қате. Жақын арада шешіледі, қайталаңыз.'
-            : '❌ Техническая ошибка. Попробуйте позже.',
-        )
-        await bot.telegram.sendMessage(
-          config.ADMIN_CHAT_ID,
-          `⚠️ Тіркелу қатесі:\n👤 ${state.name}\n📧 ${email}\n🆔 ${chatId}\n\n${err}`,
-        )
+        states.delete(chatId)
+        return
       }
 
-      states.delete(chatId)
+      state.email = email
+      state.step = 'persona'
+      states.set(chatId, state)
+
+      await ctx.reply(
+        t[lang].ask_persona,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [
+              Markup.button.callback(t[lang].btn_pdf,  'persona_pdf'),
+              Markup.button.callback(t[lang].btn_url,  'persona_url'),
+              Markup.button.callback(t[lang].btn_text, 'persona_text'),
+            ],
+            [Markup.button.callback(t[lang].skip_btn, 'skip_persona')],
+          ]),
+        },
+      )
+      return
+    }
+
+    // Persona — мәтін немесе URL (режим таңдалған болса)
+    if (state.step === 'persona' && state.personaMode) {
+      if (state.personaMode === 'url') {
+        const url = detectUrl(text) ?? text
+        await ctx.reply(t[lang].persona_reading_url, { parse_mode: 'Markdown' })
+        try {
+          state.persona = await extractFromUrl(url)
+        } catch {
+          state.persona = text
+        }
+      } else {
+        state.persona = text
+      }
+      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
+      states.set(chatId, state)
+      await finishRegistration(bot, chatId, state)
     }
   })
 
-  // ─── Фото (чек) ────────────────────────────────────────────────
+  // ─── Фото (чек немесе persona қадамын өткізу) ──────────────────
 
   bot.on(message('photo'), async (ctx) => {
     const chatId = ctx.chat.id
+    const state = states.get(chatId)
+
+    // Persona қадамында фото жіберсе — өткізіп жіберу
+    if (state?.step === 'persona' && state.personaMode) {
+      const lang = state.lang ?? 'ru'
+      state.persona = ''
+      states.set(chatId, state)
+      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
+      await finishRegistration(bot, chatId, state)
+      return
+    }
+
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id
     await handleCheck(bot, chatId, fileId, 'photo')
   })
 
-  // ─── PDF (чек) ─────────────────────────────────────────────────
+  // ─── PDF / Document ─────────────────────────────────────────────
 
   bot.on(message('document'), async (ctx) => {
     const chatId = ctx.chat.id
-    await handleCheck(bot, chatId, ctx.message.document.file_id, 'document')
+    const state = states.get(chatId)
+    const doc = ctx.message.document
+
+    // Persona қадамында PDF жіберсе — оқу
+    if (state?.step === 'persona' && state.personaMode === 'pdf') {
+      const lang = state.lang ?? 'ru'
+      if (doc.mime_type === 'application/pdf') {
+        await ctx.reply(t[lang].persona_reading_pdf, { parse_mode: 'Markdown' })
+        try {
+          const fileLink = await bot.telegram.getFileLink(doc.file_id)
+          const res = await axios.get(fileLink.href, { responseType: 'arraybuffer', timeout: 20_000 })
+          state.persona = await extractFromPdf(Buffer.from(res.data as ArrayBuffer))
+        } catch {
+          state.persona = ''
+        }
+      } else {
+        state.persona = ''
+      }
+      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
+      states.set(chatId, state)
+      await finishRegistration(bot, chatId, state)
+      return
+    }
+
+    await handleCheck(bot, chatId, doc.file_id, 'document')
   })
 
   // ─── Admin: Төлемді растау ──────────────────────────────────────

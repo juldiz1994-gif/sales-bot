@@ -10,14 +10,14 @@ const api = axios.create({
   timeout: 15_000,
 })
 
-export async function createTenant(name: string, email: string, password: string): Promise<{ id: string; isExisting: boolean }> {
+export async function createTenant(name: string, email: string, password: string, aiPersona = ''): Promise<{ id: string; isExisting: boolean }> {
   try {
     const res = await api.post('/api/tenants', {
       name,
       ownerEmail: email,
       ownerPassword: password,
       timezone: 'Asia/Almaty',
-      aiPersona: '',
+      aiPersona,
     })
     return { ...(res.data as { id: string }), isExisting: false }
   } catch (err: any) {
