@@ -204,7 +204,13 @@ export function setupBot(bot: Telegraf) {
     if (status === 'trial' && trialStartDate) {
       await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), { parse_mode: 'Markdown' })
     } else if (status === 'active' && paidUntil) {
-      await ctx.reply(t[lang].status_active(formatDate(paidUntil)), { parse_mode: 'Markdown' })
+      await ctx.reply(t[lang].status_active(formatDate(paidUntil)), {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.url(
+          lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
+          config.PLATFORM_URL,
+        )]]),
+      })
     } else {
       await ctx.reply(t[lang].status_suspended, { parse_mode: 'Markdown' })
       await ctx.reply(
@@ -412,7 +418,13 @@ export function setupBot(bot: Telegraf) {
       await bot.telegram.sendMessage(
         chatId,
         t[client.lang].renewal_approved(config.PLATFORM_URL),
-        { parse_mode: 'Markdown' },
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([[Markup.button.url(
+            client.lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
+            config.PLATFORM_URL,
+          )]]),
+        },
       )
 
       const msg = ctx.callbackQuery?.message
