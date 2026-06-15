@@ -72,99 +72,90 @@ async function handleCheck(
   }
 }
 
-// ─── Тіркелу сұрауын adminге жіберіп, күту хабары ──────────────
+// ─── Tenant жасап, credentials жіберу (автоматты) ───────────────
 
 async function finishRegistration(bot: Telegraf, chatId: number, state: UserState) {
   const lang = state.lang ?? 'ru'
   const email = state.email!
-  const name = state.name ?? ''
   const persona = state.persona ?? ''
 
-  // Бұрыннан tenant бар ма? (қайта тіркелу)
-  const prevClient = getClient(chatId)
-  const existingByEmail = getAllClients().find(c =>
-    c.email.toLowerCase() === email && c.tenantId != null && c.chatId !== chatId,
-  )
-
-  if (
-    (prevClient?.email?.toLowerCase() === email && prevClient.tenantId) ||
-    existingByEmail
-  ) {
-    // Бұрыннан бар — тікелей suspended + төлем
-    await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
-    await bot.telegram.sendMessage(
-      chatId,
-      t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-      { parse_mode: 'Markdown' },
-    )
-    states.delete(chatId)
-    return
-  }
-
-  // Жаңа клиент — pending күйде сақтап, adminге жіберу
-  saveClient({
-    chatId,
-    lang,
-    name,
-    email,
-    tenantId: null,
-    password: null,
-    status: 'pending',
-    trialStartDate: null,
-    paidUntil: null,
-    trialReminderSent: false,
-    createdAt: new Date().toISOString(),
-  })
-
-  await bot.telegram.sendMessage(chatId, t[lang].pending, { parse_mode: 'Markdown' })
-
-  await bot.telegram.sendMessage(
-    config.ADMIN_CHAT_ID,
-    `📝 *Жаңа тіркелу сұрауы*\n\n👤 ${name}\n📧 ${email}\n🆔 Chat: ${chatId}${persona ? `\n\n📄 AI Persona:\n${persona.slice(0, 500)}${persona.length > 500 ? '...' : ''}` : ''}`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback('✅ Растау', `approve_${chatId}_reg`),
-          Markup.button.callback('❌ Бас тарту', `reject_${chatId}_reg`),
-        ],
-      ]),
-    },
-  )
-
-  states.delete(chatId)
-}
-
-// ─── Admin: Жаңа тіркелуді растау ───────────────────────────────
-
-async function approveRegistration(bot: Telegraf, chatId: number) {
-  const client = getClient(chatId)
-  if (!client || client.status !== 'pending') return
+  await bot.telegram.sendMessage(chatId, '⏳', { parse_mode: 'Markdown' })
 
   try {
-    const password = genPasswordForEmail(client.email)
-    const tenant = await createTenant(client.name, client.email, password, '')
-    const tenantId = tenant.id
+    let tenantId: string | null = null
+    let password: string | null = null
 
-    updateClient(chatId, {
+    // 1) Осы chatId-де сол email бар ма?
+    const prevClient = getClient(chatId)
+    if (prevClient?.email?.toLowerCase() === email && prevClient.tenantId && prevClient.password) {
+      tenantId = prevClient.tenantId
+      password = prevClient.password
+    }
+
+    // 2) Басқа chatId-де сол email tenant бар ма?
+    if (!tenantId) {
+      const found = getAllClients().find(c =>
+        c.email.toLowerCase() === email &&
+        c.tenantId != null &&
+        c.password != null &&
+        c.chatId !== chatId,
+      )
+      if (found) {
+        tenantId = found.tenantId
+        password = found.password
+      }
+    }
+
+    // 3) Жаңа tenant жасау
+    let isExisting = false
+    if (!tenantId) {
+      password = genPasswordForEmail(email)
+      const tenant = await createTenant(state.name ?? '', email, password, persona)
+      tenantId = tenant.id
+      isExisting = tenant.isExisting
+    }
+
+    saveClient({
+      chatId,
+      lang,
+      name: state.name ?? '',
+      email,
       tenantId,
       password,
       status: 'trial',
       trialStartDate: new Date().toISOString(),
+      paidUntil: null,
+      trialReminderSent: false,
+      createdAt: new Date().toISOString(),
     })
 
+    if (isExisting) {
+      await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
+      await bot.telegram.sendMessage(chatId, t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE), { parse_mode: 'Markdown' })
+    } else {
+      await bot.telegram.sendMessage(chatId, t[lang].approved(email, password!, config.PLATFORM_URL), { parse_mode: 'Markdown' })
+    }
+
     await bot.telegram.sendMessage(
-      chatId,
-      t[client.lang].approved(client.email, password, config.PLATFORM_URL),
+      config.ADMIN_CHAT_ID,
+      `📝 *${isExisting ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}${persona ? `\n\n📄 AI Persona:\n${persona.slice(0, 400)}${persona.length > 400 ? '...' : ''}` : ''}`,
       { parse_mode: 'Markdown' },
     )
   } catch (err) {
-    console.error('[approveRegistration]', err)
+    console.error('[auto-register]', err)
+    await bot.telegram.sendMessage(
+      chatId,
+      lang === 'kz'
+        ? '❌ Техникалық қате. Жақын арада шешіледі, қайталаңыз.'
+        : '❌ Техническая ошибка. Попробуйте позже.',
+    )
     await bot.telegram.sendMessage(
       config.ADMIN_CHAT_ID,
-      `⚠️ Tenant жасау қатесі:\n👤 ${client.name}\n📧 ${client.email}\n\n${err}`,
+      `⚠️ Тіркелу қатесі:\n👤 ${state.name}\n📧 ${email}\n🆔 ${chatId}\n\n${err}`,
     )
   }
+
+  states.delete(chatId)
 }
 
 // ─── Бот орнату ──────────────────────────────────────────────────
@@ -178,11 +169,6 @@ export function setupBot(bot: Telegraf) {
 
     if (client && (client.status === 'trial' || client.status === 'active')) {
       await ctx.reply(t[client.lang].already_active, { parse_mode: 'Markdown' })
-      return
-    }
-
-    if (client && client.status === 'pending') {
-      await ctx.reply(t[client.lang].pending, { parse_mode: 'Markdown' })
       return
     }
 
@@ -449,46 +435,6 @@ export function setupBot(bot: Telegraf) {
     }
 
     await handleCheck(bot, chatId, doc.file_id, 'document')
-  })
-
-  // ─── Admin: Жаңа тіркелуді растау/бас тарту ────────────────────
-
-  bot.action(/^approve_(\d+)_reg$/, async (ctx) => {
-    const chatId = parseInt(ctx.match[1])
-    const client = getClient(chatId)
-    if (!client || client.status !== 'pending') {
-      await ctx.answerCbQuery('Клиент табылмады немесе статус өзгерген')
-      return
-    }
-
-    await ctx.answerCbQuery('⏳ Тіркелуде...')
-
-    await approveRegistration(bot, chatId)
-
-    const updatedClient = getClient(chatId)
-    const msg = ctx.callbackQuery?.message
-    if (msg && 'text' in msg) {
-      await ctx.editMessageText(
-        `✅ РАСТАЛДЫ — ${client.name} (${client.email})\n🏢 Tenant: ${updatedClient?.tenantId ?? '—'}`,
-        { parse_mode: 'Markdown' },
-      )
-    }
-  })
-
-  bot.action(/^reject_(\d+)_reg$/, async (ctx) => {
-    const chatId = parseInt(ctx.match[1])
-    const client = getClient(chatId)
-    if (!client) { await ctx.answerCbQuery(); return }
-
-    updateClient(chatId, { status: 'suspended' })
-
-    await bot.telegram.sendMessage(chatId, t[client.lang].rejected, { parse_mode: 'Markdown' })
-    await ctx.answerCbQuery('❌ Бас тартылды')
-
-    const msg = ctx.callbackQuery?.message
-    if (msg && 'text' in msg) {
-      await ctx.editMessageText(`❌ БАС ТАРТЫЛДЫ — ${client.name} (${client.email})`)
-    }
   })
 
   // ─── Admin: Төлемді растау ──────────────────────────────────────
