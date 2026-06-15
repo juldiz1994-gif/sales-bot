@@ -11,7 +11,7 @@ import {
   type UserState,
   type ClientRecord,
 } from './store'
-import { createTenant, activateTenant } from './platform'
+import { createTenant, activateTenant, suspendTenant } from './platform'
 import { detectUrl, extractFromUrl } from './persona'
 
 const states = new Map<number, UserState>()
@@ -223,6 +223,50 @@ export function setupBot(bot: Telegraf) {
   bot.help(async (ctx) => {
     const lang: Lang = getClient(ctx.chat.id)?.lang ?? 'ru'
     await ctx.reply(t[lang].help, { parse_mode: 'Markdown' })
+  })
+
+  // /expire <chatId> — admin тестілеу командасы (trial-ді дереу аяқтайды)
+  bot.command('expire', async (ctx) => {
+    if (String(ctx.chat.id) !== String(config.ADMIN_CHAT_ID)) return
+
+    const parts = ctx.message.text.trim().split(/\s+/)
+    const targetId = parts[1] ? parseInt(parts[1]) : NaN
+
+    if (isNaN(targetId)) {
+      await ctx.reply('❌ Пайдалану: /expire <chatId>\nМысалы: /expire 6579431757')
+      return
+    }
+
+    const client = getClient(targetId)
+    if (!client) {
+      await ctx.reply(`❌ Клиент табылмады: ${targetId}`)
+      return
+    }
+    if (client.status !== 'trial') {
+      await ctx.reply(`⚠️ Клиент status=${client.status} (тек trial статусы үшін жұмыс жасайды)`)
+      return
+    }
+
+    try {
+      if (client.tenantId) await suspendTenant(client.tenantId, 'Test: trial force expired')
+      updateClient(targetId, { status: 'suspended' })
+
+      await bot.telegram.sendMessage(
+        targetId,
+        t[client.lang].trial_expired,
+        { parse_mode: 'Markdown' },
+      )
+      await bot.telegram.sendMessage(
+        targetId,
+        t[client.lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
+        { parse_mode: 'Markdown' },
+      )
+
+      await ctx.reply(`✅ ${client.name} (${client.email}) — trial аяқталды, suspended болды`)
+    } catch (err) {
+      console.error('[force expire]', err)
+      await ctx.reply(`❌ Қате: ${err}`)
+    }
   })
 
   // ─── Тіл таңдау ────────────────────────────────────────────────
