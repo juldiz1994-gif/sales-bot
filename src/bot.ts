@@ -231,8 +231,20 @@ export function setupBot(bot: Telegraf) {
         let tenantId: string | null = null
         let password: string | null = null
 
-        // 1) Бұрыннан осы chatId-де сол email бар ма?
+        // 0) Осы chatId бұрын БАСҚА email-мен тіркелген бе? → тегін мерзім берілмейді
         const prevClient = getClient(chatId)
+        if (prevClient && prevClient.email.toLowerCase() !== email) {
+          await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
+          await bot.telegram.sendMessage(
+            chatId,
+            t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
+            { parse_mode: 'Markdown' },
+          )
+          states.delete(chatId)
+          return
+        }
+
+        // 1) Бұрыннан осы chatId-де сол email бар ма?
         if (prevClient?.email?.toLowerCase() === email && prevClient.tenantId && prevClient.password) {
           tenantId = prevClient.tenantId
           password = prevClient.password
