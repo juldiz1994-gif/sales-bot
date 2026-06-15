@@ -2,15 +2,23 @@ import { Telegraf } from 'telegraf'
 import { config } from './config'
 import { setupBot } from './bot'
 import { startTrialCron } from './trial'
+import { initStore } from './store'
 
-const bot = new Telegraf(config.BOT_TOKEN)
+async function main() {
+  await initStore()
 
-setupBot(bot)
-startTrialCron(bot)
+  const bot = new Telegraf(config.BOT_TOKEN)
+  setupBot(bot)
+  startTrialCron(bot)
 
-bot.launch().then(() => {
+  await bot.launch()
   console.log('✅ Sales bot жұмыс жасауда...')
+}
+
+main().catch(err => {
+  console.error('Fatal:', err)
+  process.exit(1)
 })
 
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+process.once('SIGINT', () => process.exit(0))
+process.once('SIGTERM', () => process.exit(0))

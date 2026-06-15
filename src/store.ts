@@ -1,14 +1,15 @@
 import fs from 'fs'
 import path from 'path'
+import { Pool } from 'pg'
 import { config } from './config'
 import type { Lang } from './i18n'
 
 export type ClientStatus =
-  | 'pending'        // тіркелу жіберілді, admin растамаған
-  | 'trial'          // 7 күн тегін
-  | 'active'         // төленген
-  | 'suspended'      // тоқтатылған
-  | 'pending_payment' // чек жіберді, admin растамаған
+  | 'pending'
+  | 'trial'
+  | 'active'
+  | 'suspended'
+  | 'pending_payment'
 
 export interface ClientRecord {
   chatId: number
@@ -18,13 +19,12 @@ export interface ClientRecord {
   tenantId: string | null
   password: string | null
   status: ClientStatus
-  trialStartDate: string | null   // ISO string
-  paidUntil: string | null        // ISO string
+  trialStartDate: string | null
+  paidUntil: string | null
   trialReminderSent: boolean
   createdAt: string
 }
 
-// Боттағы қадам күйі (жады — сервер өшсе жоғалады, бірақ жеткілікті)
 export type Step = 'lang' | 'name' | 'email' | 'payment' | 'done'
 
 export interface UserState {
@@ -34,56 +34,125 @@ export interface UserState {
   email?: string
 }
 
-// ─── Файл жүйесі ────────────────────────────────────────────────
+// ─── In-memory cache ─────────────────────────────────────────────
 
-const dataDir = path.dirname(config.DATA_FILE)
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true })
+const cache = new Map<number, ClientRecord>()
+
+// ─── PostgreSQL pool (only if DATABASE_URL is set) ───────────────
+
+let pool: Pool | null = null
+
+function getPool(): Pool | null {
+  if (!process.env.DATABASE_URL) return null
+  if (!pool) pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  return pool
 }
 
-interface Store {
-  clients: Record<string, ClientRecord>
+async function ensureTable(p: Pool): Promise<void> {
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS clients (
+      chat_id BIGINT PRIMARY KEY,
+      data JSONB NOT NULL
+    )
+  `)
 }
 
-function load(): Store {
-  if (!fs.existsSync(config.DATA_FILE)) return { clients: {} }
+async function pgSave(record: ClientRecord): Promise<void> {
+  const p = getPool()
+  if (!p) return
   try {
-    return JSON.parse(fs.readFileSync(config.DATA_FILE, 'utf-8'))
-  } catch {
-    return { clients: {} }
+    await p.query(
+      `INSERT INTO clients (chat_id, data) VALUES ($1, $2)
+       ON CONFLICT (chat_id) DO UPDATE SET data = EXCLUDED.data`,
+      [record.chatId, JSON.stringify(record)],
+    )
+  } catch (err) {
+    console.error('[store] pg write error', err)
   }
 }
 
-function save(store: Store) {
-  fs.writeFileSync(config.DATA_FILE, JSON.stringify(store, null, 2), 'utf-8')
+// ─── File fallback (only used when no DATABASE_URL) ──────────────
+
+const dataDir = path.dirname(config.DATA_FILE)
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
+
+function fileLoad(): Record<string, ClientRecord> {
+  if (!fs.existsSync(config.DATA_FILE)) return {}
+  try { return JSON.parse(fs.readFileSync(config.DATA_FILE, 'utf-8')).clients ?? {} } catch { return {} }
 }
 
-// ─── Public API ─────────────────────────────────────────────────
+function fileSave(record: ClientRecord): void {
+  const clients = fileLoad()
+  clients[String(record.chatId)] = record
+  fs.writeFileSync(config.DATA_FILE, JSON.stringify({ clients }, null, 2), 'utf-8')
+}
+
+function fileUpdate(chatId: number, updates: Partial<ClientRecord>): void {
+  const clients = fileLoad()
+  if (clients[String(chatId)]) {
+    clients[String(chatId)] = { ...clients[String(chatId)], ...updates }
+    fs.writeFileSync(config.DATA_FILE, JSON.stringify({ clients }, null, 2), 'utf-8')
+  }
+}
+
+// ─── Init: load from PostgreSQL into cache on startup ────────────
+
+export async function initStore(): Promise<void> {
+  const p = getPool()
+  if (!p) {
+    // no DATABASE_URL — load from file into cache
+    const clients = fileLoad()
+    for (const rec of Object.values(clients)) cache.set(rec.chatId, rec)
+    console.log(`[store] file mode — ${cache.size} clients loaded`)
+    return
+  }
+  try {
+    await ensureTable(p)
+    const { rows } = await p.query('SELECT data FROM clients')
+    for (const row of rows) {
+      const rec: ClientRecord = row.data
+      cache.set(rec.chatId, rec)
+    }
+    console.log(`[store] postgres mode — ${cache.size} clients loaded`)
+  } catch (err) {
+    console.error('[store] pg init error', err)
+  }
+}
+
+// ─── Public API (synchronous reads from cache) ───────────────────
 
 export function getClient(chatId: number): ClientRecord | null {
-  return load().clients[String(chatId)] ?? null
+  return cache.get(chatId) ?? null
 }
 
 export function saveClient(record: ClientRecord): void {
-  const store = load()
-  store.clients[String(record.chatId)] = record
-  save(store)
+  cache.set(record.chatId, record)
+  if (getPool()) {
+    pgSave(record)
+  } else {
+    fileSave(record)
+  }
 }
 
 export function updateClient(chatId: number, updates: Partial<ClientRecord>): void {
-  const store = load()
-  const existing = store.clients[String(chatId)]
-  if (existing) {
-    store.clients[String(chatId)] = { ...existing, ...updates }
-    save(store)
+  const existing = cache.get(chatId)
+  if (!existing) return
+  const updated = { ...existing, ...updates }
+  cache.set(chatId, updated)
+  if (getPool()) {
+    pgSave(updated)
+  } else {
+    fileUpdate(chatId, updates)
   }
 }
 
 export function getAllClients(): ClientRecord[] {
-  return Object.values(load().clients)
+  return Array.from(cache.values())
 }
 
 export function getClientByEmail(email: string): ClientRecord | null {
-  const all = Object.values(load().clients)
-  return all.find(c => c.email.toLowerCase() === email.toLowerCase()) ?? null
+  for (const rec of cache.values()) {
+    if (rec.email.toLowerCase() === email.toLowerCase()) return rec
+  }
+  return null
 }
