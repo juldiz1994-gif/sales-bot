@@ -46,11 +46,16 @@ let pool: Pool | null = null
 
 function getPool(): Pool | null {
   if (!process.env.DATABASE_URL) return null
-  if (!pool) pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    connectionTimeoutMillis: 8_000,
-    idleTimeoutMillis: 30_000,
-  })
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      connectionTimeoutMillis: 8_000,
+      idleTimeoutMillis: 30_000,
+    })
+    pool.on('error', (err) => {
+      console.error('[store] pg pool error (idle client)', err)
+    })
+  }
   return pool
 }
 
