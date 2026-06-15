@@ -1,9 +1,6 @@
 import axios from 'axios'
 import { load } from 'cheerio'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
-
 const MAX_LEN = 3000
 
 export function detectUrl(text: string): string | null {
@@ -20,9 +17,4 @@ export async function extractFromUrl(url: string): Promise<string> {
   $('script, style, nav, footer, header, iframe, noscript').remove()
   const text = $('body').text().replace(/\s+/g, ' ').trim()
   return text.slice(0, MAX_LEN)
-}
-
-export async function extractFromPdf(buffer: Buffer): Promise<string> {
-  const data = await pdfParse(buffer)
-  return data.text.slice(0, MAX_LEN)
 }

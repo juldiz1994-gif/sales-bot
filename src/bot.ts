@@ -1,5 +1,4 @@
 import { createHmac } from 'crypto'
-import axios from 'axios'
 import { Telegraf, Markup } from 'telegraf'
 import { message } from 'telegraf/filters'
 import { config } from './config'
@@ -13,7 +12,7 @@ import {
   type ClientRecord,
 } from './store'
 import { createTenant, activateTenant } from './platform'
-import { detectUrl, extractFromUrl, extractFromPdf } from './persona'
+import { detectUrl, extractFromUrl } from './persona'
 
 const states = new Map<number, UserState>()
 
@@ -417,23 +416,20 @@ export function setupBot(bot: Telegraf) {
     const state = states.get(chatId)
     const doc = ctx.message.document
 
-    // Persona қадамында PDF жіберсе — оқу
+    // Persona қадамында PDF жіберсе — adminге жібер
     if (state?.step === 'persona' && state.personaMode === 'pdf') {
       const lang = state.lang ?? 'ru'
-      if (doc.mime_type === 'application/pdf') {
-        await ctx.reply(t[lang].persona_reading_pdf, { parse_mode: 'Markdown' })
-        try {
-          const fileLink = await bot.telegram.getFileLink(doc.file_id)
-          const res = await axios.get(fileLink.href, { responseType: 'arraybuffer', timeout: 20_000 })
-          state.persona = await extractFromPdf(Buffer.from(res.data as ArrayBuffer))
-        } catch {
-          state.persona = ''
-        }
-      } else {
-        state.persona = ''
-      }
-      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
+      state.persona = `[PDF файл жүктелді: ${doc.file_name ?? 'document.pdf'}]`
       states.set(chatId, state)
+      // PDF-ті adminге жіберу
+      try {
+        await bot.telegram.sendDocument(
+          config.ADMIN_CHAT_ID,
+          doc.file_id,
+          { caption: `📎 AI Persona PDF\n👤 ${state.name}\n📧 ${state.email}\n\nAI Persona бетіне қосыңыз.` },
+        )
+      } catch { /* ignore */ }
+      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
       await finishRegistration(bot, chatId, state)
       return
     }
