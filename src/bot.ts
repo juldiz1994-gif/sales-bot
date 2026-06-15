@@ -12,7 +12,6 @@ import {
   type ClientRecord,
 } from './store'
 import { createTenant, activateTenant, suspendTenant } from './platform'
-import { detectUrl, extractFromUrl } from './persona'
 
 const states = new Map<number, UserState>()
 
@@ -133,7 +132,13 @@ async function finishRegistration(bot: Telegraf, chatId: number, state: UserStat
       await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
       await bot.telegram.sendMessage(chatId, t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE), { parse_mode: 'Markdown' })
     } else {
-      await bot.telegram.sendMessage(chatId, t[lang].approved(email, password!, config.PLATFORM_URL), { parse_mode: 'Markdown' })
+      await bot.telegram.sendMessage(chatId, t[lang].approved(email, password!, config.PLATFORM_URL), {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.url(
+          lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
+          config.PLATFORM_URL,
+        )]]),
+      })
     }
 
     await bot.telegram.sendMessage(
@@ -306,40 +311,6 @@ export function setupBot(bot: Telegraf) {
     await ctx.reply(t[lang].ask_name, { parse_mode: 'Markdown' })
   })
 
-  // ─── Persona батон өңдегіштер ───────────────────────────────────
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function handlePersonaAction(ctx: any, mode: 'pdf' | 'url' | 'text' | 'skip') {
-    const chatId = ctx.chat!.id
-    const state = states.get(chatId)
-    if (!state || state.step !== 'persona') { await ctx.answerCbQuery(); return }
-    await ctx.answerCbQuery()
-
-    if (mode === 'skip') {
-      state.persona = ''
-      states.set(chatId, state)
-      await finishRegistration(bot, chatId, state)
-      return
-    }
-
-    const lang = state.lang ?? 'ru'
-    state.personaMode = mode
-    states.set(chatId, state)
-
-    const modeMsg = mode === 'pdf'
-      ? t[lang].persona_mode_pdf
-      : mode === 'url'
-        ? t[lang].persona_mode_url
-        : t[lang].persona_mode_text
-
-    await ctx.editMessageText(`${t[lang].ask_persona}\n\n${modeMsg}`, { parse_mode: 'Markdown' })
-  }
-
-  bot.action('persona_pdf',  (ctx) => handlePersonaAction(ctx, 'pdf'))
-  bot.action('persona_url',  (ctx) => handlePersonaAction(ctx, 'url'))
-  bot.action('persona_text', (ctx) => handlePersonaAction(ctx, 'text'))
-  bot.action('skip_persona', (ctx) => handlePersonaAction(ctx, 'skip'))
-
   // ─── Мәтін өңдеу ───────────────────────────────────────────────
 
   bot.on(message('text'), async (ctx) => {
@@ -394,42 +365,10 @@ export function setupBot(bot: Telegraf) {
       }
 
       state.email = email
-      state.step = 'persona'
-      states.set(chatId, state)
-
-      await ctx.reply(
-        t[lang].ask_persona,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [
-              Markup.button.callback(t[lang].btn_pdf,  'persona_pdf'),
-              Markup.button.callback(t[lang].btn_url,  'persona_url'),
-              Markup.button.callback(t[lang].btn_text, 'persona_text'),
-            ],
-            [Markup.button.callback(t[lang].skip_btn, 'skip_persona')],
-          ]),
-        },
-      )
-      return
-    }
-
-    // Persona — мәтін немесе URL (режим таңдалған болса)
-    if (state.step === 'persona' && state.personaMode) {
-      if (state.personaMode === 'url') {
-        const url = detectUrl(text) ?? text
-        await ctx.reply(t[lang].persona_reading_url, { parse_mode: 'Markdown' })
-        try {
-          state.persona = await extractFromUrl(url)
-        } catch {
-          state.persona = text
-        }
-      } else {
-        state.persona = text
-      }
-      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
+      state.persona = ''
       states.set(chatId, state)
       await finishRegistration(bot, chatId, state)
+      return
     }
   })
 
@@ -437,18 +376,6 @@ export function setupBot(bot: Telegraf) {
 
   bot.on(message('photo'), async (ctx) => {
     const chatId = ctx.chat.id
-    const state = states.get(chatId)
-
-    // Persona қадамында фото жіберсе — өткізіп жіберу
-    if (state?.step === 'persona' && state.personaMode) {
-      const lang = state.lang ?? 'ru'
-      state.persona = ''
-      states.set(chatId, state)
-      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
-      await finishRegistration(bot, chatId, state)
-      return
-    }
-
     const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id
     await handleCheck(bot, chatId, fileId, 'photo')
   })
@@ -457,27 +384,7 @@ export function setupBot(bot: Telegraf) {
 
   bot.on(message('document'), async (ctx) => {
     const chatId = ctx.chat.id
-    const state = states.get(chatId)
     const doc = ctx.message.document
-
-    // Persona қадамында PDF жіберсе — adminге жібер
-    if (state?.step === 'persona' && state.personaMode === 'pdf') {
-      const lang = state.lang ?? 'ru'
-      state.persona = `[PDF файл жүктелді: ${doc.file_name ?? 'document.pdf'}]`
-      states.set(chatId, state)
-      // PDF-ті adminге жіберу
-      try {
-        await bot.telegram.sendDocument(
-          config.ADMIN_CHAT_ID,
-          doc.file_id,
-          { caption: `📎 AI Persona PDF\n👤 ${state.name}\n📧 ${state.email}\n\nAI Persona бетіне қосыңыз.` },
-        )
-      } catch { /* ignore */ }
-      await ctx.reply(t[lang].persona_received, { parse_mode: 'Markdown' })
-      await finishRegistration(bot, chatId, state)
-      return
-    }
-
     await handleCheck(bot, chatId, doc.file_id, 'document')
   })
 
