@@ -4,7 +4,7 @@ export const t = {
   kz: {
     choose_lang: '🌐 Тілді таңдаңыз:',
 
-    welcome: (price: string) => `👋 Сәлем! *WaBot* — бизнесіңіз үшін AI бот платформасы
+    welcome: (price: string) => `👋 Сәлем! Бұл *Aisha AI Studio* — бизнесіңіз үшін AI бот платформасы
 
 📱 *WhatsApp + Telegram* — екі каналда бір мезгілде
 🤖 AI клиенттерімен өзі сөйлеседі, сіз ұйықтасаңыз да
@@ -93,7 +93,7 @@ export const t = {
   ru: {
     choose_lang: '🌐 Выберите язык:',
 
-    welcome: (price: string) => `👋 Привет! *WaBot* — AI бот платформа для вашего бизнеса
+    welcome: (price: string) => `👋 Привет! Это *Aisha AI Studio* — AI бот платформа для вашего бизнеса
 
 📱 *WhatsApp + Telegram* — работает в двух каналах одновременно
 🤖 AI сам общается с клиентами, даже ночью
