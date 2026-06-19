@@ -425,6 +425,10 @@ export function setupBot(bot: Telegraf) {
   bot.on(message('document'), async (ctx) => {
     const chatId = ctx.chat.id
     const doc = ctx.message.document
+    if (String(chatId) === String(config.ADMIN_CHAT_ID)) {
+      await ctx.reply(`✅ Файл file_id:\n\`${doc.file_id}\`\n\nRailway → Variables → DEMO_VIDEO_ID-ге осы мәнді қойыңыз.`, { parse_mode: 'Markdown' })
+      return
+    }
     await handleCheck(bot, chatId, doc.file_id, 'document')
   })
 
