@@ -405,6 +405,21 @@ export function setupBot(bot: Telegraf) {
     await handleCheck(bot, chatId, fileId, 'photo')
   })
 
+  // ─── Admin: Видео жіберсе file_id қайтарады (DEMO_VIDEO_ID орнату үшін) ───
+  bot.on(message('video'), async (ctx) => {
+    const chatId = ctx.chat.id
+    if (String(chatId) === String(config.ADMIN_CHAT_ID)) {
+      const fileId = ctx.message.video.file_id
+      await ctx.reply(`✅ Видео file_id:\n\`${fileId}\`\n\nRailway → Variables → DEMO_VIDEO_ID-ге осы мәнді қойыңыз.`, { parse_mode: 'Markdown' })
+      return
+    }
+    // Клиент видео жіберсе — чек ретінде тексер
+    const client = getClient(chatId)
+    if (client?.status === 'suspended') {
+      await handleCheck(bot, chatId, ctx.message.video.file_id, 'document')
+    }
+  })
+
   // ─── PDF / Document ─────────────────────────────────────────────
 
   bot.on(message('document'), async (ctx) => {
