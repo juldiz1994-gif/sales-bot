@@ -19,4 +19,6 @@ export const config = {
   DATA_FILE: process.env.DATA_FILE || './data/clients.json',
   TRIAL_DAYS: 7,
   PRICE: '7 990 ₸',
+  DEMO_VIDEO_ID: process.env.DEMO_VIDEO_ID || '',
+  SUPPORT_INSTAGRAM: 'https://www.instagram.com/ai_aisha_kz',
 }

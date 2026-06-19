@@ -233,7 +233,10 @@ export function setupBot(bot: Telegraf) {
   // /help
   bot.help(async (ctx) => {
     const lang: Lang = getClient(ctx.chat.id)?.lang ?? 'ru'
-    await ctx.reply(t[lang].help, { parse_mode: 'Markdown' })
+    await ctx.reply(t[lang].help, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([[Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)]]),
+    })
   })
 
   // /expire <chatId> — admin тестілеу командасы (trial-ді дереу аяқтайды)
@@ -293,10 +296,26 @@ export function setupBot(bot: Telegraf) {
     states.set(chatId, state)
 
     await ctx.answerCbQuery()
-    await ctx.editMessageText(t[lang].welcome(config.PRICE), {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([[Markup.button.callback(t[lang].start_btn, 'start_reg')]]),
-    })
+
+    const welcomeText = t[lang].welcome(config.PRICE)
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback(t[lang].start_btn, 'start_reg')],
+      [Markup.button.url(lang === 'kz' ? '📞 Техподдержка (Instagram)' : '📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+    ])
+
+    if (config.DEMO_VIDEO_ID) {
+      try { await ctx.deleteMessage() } catch {}
+      await ctx.replyWithVideo(config.DEMO_VIDEO_ID, {
+        caption: welcomeText,
+        parse_mode: 'Markdown',
+        ...keyboard,
+      })
+    } else {
+      await ctx.editMessageText(welcomeText, {
+        parse_mode: 'Markdown',
+        ...keyboard,
+      })
+    }
   }
 
   bot.action('lang_kz', (ctx) => handleLang(ctx, 'kz'))
