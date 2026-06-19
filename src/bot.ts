@@ -167,13 +167,37 @@ async function finishRegistration(bot: Telegraf, chatId: number, state: UserStat
 
 export function setupBot(bot: Telegraf) {
 
+  function supportKeyboard(lang: Lang) {
+    return Markup.inlineKeyboard([[Markup.button.url(
+      lang === 'kz' ? '📞 Техподдержка (Instagram)' : '📞 Техподдержка (Instagram)',
+      config.SUPPORT_INSTAGRAM,
+    )]])
+  }
+
   // /start
   bot.start(async (ctx) => {
     const chatId = ctx.chat.id
     const client = getClient(chatId)
 
     if (client && (client.status === 'trial' || client.status === 'active')) {
-      await ctx.reply(t[client.lang].already_active, { parse_mode: 'Markdown' })
+      const { lang, status, trialStartDate, paidUntil } = client
+      if (status === 'trial' && trialStartDate) {
+        await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
+            [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+          ]),
+        })
+      } else if (status === 'active' && paidUntil) {
+        await ctx.reply(t[lang].status_active(formatDate(paidUntil)), {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
+            [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+          ]),
+        })
+      }
       return
     }
 
@@ -181,7 +205,7 @@ export function setupBot(bot: Telegraf) {
       await ctx.reply(t[client.lang].status_suspended, { parse_mode: 'Markdown' })
       await ctx.reply(
         t[client.lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-        { parse_mode: 'Markdown' },
+        { parse_mode: 'Markdown', ...supportKeyboard(client.lang) },
       )
       return
     }
@@ -202,20 +226,26 @@ export function setupBot(bot: Telegraf) {
     if (!client) { await ctx.reply('Сіз тіркелмегенсіз. /start'); return }
     const { lang, status, trialStartDate, paidUntil } = client
     if (status === 'trial' && trialStartDate) {
-      await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), { parse_mode: 'Markdown' })
+      await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
+          [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+        ]),
+      })
     } else if (status === 'active' && paidUntil) {
       await ctx.reply(t[lang].status_active(formatDate(paidUntil)), {
         parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.url(
-          lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
-          config.PLATFORM_URL,
-        )]]),
+        ...Markup.inlineKeyboard([
+          [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
+          [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+        ]),
       })
     } else {
       await ctx.reply(t[lang].status_suspended, { parse_mode: 'Markdown' })
       await ctx.reply(
         t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-        { parse_mode: 'Markdown' },
+        { parse_mode: 'Markdown', ...supportKeyboard(lang) },
       )
     }
   })
