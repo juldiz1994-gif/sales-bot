@@ -130,14 +130,11 @@ async function finishRegistration(bot: Telegraf, chatId: number, state: UserStat
 
     if (isExisting) {
       await bot.telegram.sendMessage(chatId, t[lang].status_suspended, { parse_mode: 'Markdown' })
-      await bot.telegram.sendMessage(chatId, t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE), { parse_mode: 'Markdown' })
+      await bot.telegram.sendMessage(chatId, t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE), { parse_mode: 'Markdown', ...supportKeyboard(lang) })
     } else {
       await bot.telegram.sendMessage(chatId, t[lang].approved(email, password!, config.PLATFORM_URL), {
         parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.url(
-          lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
-          config.PLATFORM_URL,
-        )]]),
+        ...siteAndSupportKeyboard(lang),
       })
     }
 
@@ -163,16 +160,23 @@ async function finishRegistration(bot: Telegraf, chatId: number, state: UserStat
   states.delete(chatId)
 }
 
+function supportKeyboard(lang: Lang) {
+  return Markup.inlineKeyboard([[Markup.button.url(
+    '📞 Техподдержка (Instagram)',
+    config.SUPPORT_INSTAGRAM,
+  )]])
+}
+
+function siteAndSupportKeyboard(lang: Lang) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
+    [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
+  ])
+}
+
 // ─── Бот орнату ──────────────────────────────────────────────────
 
 export function setupBot(bot: Telegraf) {
-
-  function supportKeyboard(lang: Lang) {
-    return Markup.inlineKeyboard([[Markup.button.url(
-      lang === 'kz' ? '📞 Техподдержка (Instagram)' : '📞 Техподдержка (Instagram)',
-      config.SUPPORT_INSTAGRAM,
-    )]])
-  }
 
   // /start
   bot.start(async (ctx) => {
@@ -183,19 +187,11 @@ export function setupBot(bot: Telegraf) {
       const { lang, status, trialStartDate, paidUntil } = client
       if (status === 'trial' && trialStartDate) {
         await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
-            [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
-          ]),
+          parse_mode: 'Markdown', ...siteAndSupportKeyboard(lang),
         })
       } else if (status === 'active' && paidUntil) {
         await ctx.reply(t[lang].status_active(formatDate(paidUntil)), {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
-            [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
-          ]),
+          parse_mode: 'Markdown', ...siteAndSupportKeyboard(lang),
         })
       }
       return
@@ -227,19 +223,11 @@ export function setupBot(bot: Telegraf) {
     const { lang, status, trialStartDate, paidUntil } = client
     if (status === 'trial' && trialStartDate) {
       await ctx.reply(t[lang].status_trial(daysLeft(trialStartDate)), {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
-          [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
-        ]),
+        parse_mode: 'Markdown', ...siteAndSupportKeyboard(lang),
       })
     } else if (status === 'active' && paidUntil) {
       await ctx.reply(t[lang].status_active(formatDate(paidUntil)), {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url(lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт', config.PLATFORM_URL)],
-          [Markup.button.url('📞 Техподдержка (Instagram)', config.SUPPORT_INSTAGRAM)],
-        ]),
+        parse_mode: 'Markdown', ...siteAndSupportKeyboard(lang),
       })
     } else {
       await ctx.reply(t[lang].status_suspended, { parse_mode: 'Markdown' })
@@ -256,7 +244,7 @@ export function setupBot(bot: Telegraf) {
     const lang: Lang = client?.lang ?? 'ru'
     await ctx.reply(
       t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-      { parse_mode: 'Markdown' },
+      { parse_mode: 'Markdown', ...supportKeyboard(lang) },
     )
   })
 
@@ -303,7 +291,7 @@ export function setupBot(bot: Telegraf) {
       await bot.telegram.sendMessage(
         targetId,
         t[client.lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-        { parse_mode: 'Markdown' },
+        { parse_mode: 'Markdown', ...supportKeyboard(client.lang) },
       )
 
       await ctx.reply(`✅ ${client.name} (${client.email}) — trial аяқталды, suspended болды`)
@@ -381,7 +369,7 @@ export function setupBot(bot: Telegraf) {
         await ctx.reply(t[client.lang].status_suspended, { parse_mode: 'Markdown' })
         await ctx.reply(
           t[client.lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-          { parse_mode: 'Markdown' },
+          { parse_mode: 'Markdown', ...supportKeyboard(client.lang) },
         )
       }
       return
@@ -413,7 +401,7 @@ export function setupBot(bot: Telegraf) {
         await bot.telegram.sendMessage(
           chatId,
           t[lang].payment_info(config.KASPI_PHONE, config.KASPI_NAME, config.PRICE),
-          { parse_mode: 'Markdown' },
+          { parse_mode: 'Markdown', ...supportKeyboard(lang) },
         )
         states.delete(chatId)
         return
@@ -486,13 +474,7 @@ export function setupBot(bot: Telegraf) {
       await bot.telegram.sendMessage(
         chatId,
         t[client.lang].renewal_approved(config.PLATFORM_URL),
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([[Markup.button.url(
-            client.lang === 'kz' ? '🌐 Сайтқа кіру' : '🌐 Войти на сайт',
-            config.PLATFORM_URL,
-          )]]),
-        },
+        { parse_mode: 'Markdown', ...siteAndSupportKeyboard(client.lang) },
       )
 
       const msg = ctx.callbackQuery?.message
@@ -519,7 +501,7 @@ export function setupBot(bot: Telegraf) {
     await bot.telegram.sendMessage(
       chatId,
       t[client.lang].payment_rejected,
-      { parse_mode: 'Markdown' },
+      { parse_mode: 'Markdown', ...supportKeyboard(client.lang) },
     )
 
     await ctx.answerCbQuery('❌ Бас тартылды')
