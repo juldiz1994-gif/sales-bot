@@ -15,6 +15,10 @@ import { createTenant, activateTenant, suspendTenant } from './platform'
 
 const states = new Map<number, UserState>()
 
+function esc(text: string): string {
+  return text.replace(/[_*`[]/g, '\\$&')
+}
+
 function genPasswordForEmail(email: string): string {
   const h = createHmac('sha256', 'sb-pw-salt-2024').update(email.toLowerCase()).digest('hex')
   return h.slice(0, 8) + 'Zq9!'
@@ -37,7 +41,7 @@ async function notifyPayment(
   fileId?: string,
   fileType?: 'photo' | 'document',
 ) {
-  const caption = `💳 *Жаңарту төлемі*\n\n👤 ${client.name}\n📧 ${client.email}\n🆔 Chat: ${client.chatId}\n🏢 Tenant: ${client.tenantId ?? '—'}`
+  const caption = `💳 *Жаңарту төлемі*\n\n👤 ${esc(client.name)}\n📧 ${esc(client.email)}\n🆔 Chat: ${client.chatId}\n🏢 Tenant: ${client.tenantId ?? '—'}`
 
   const keyboard = Markup.inlineKeyboard([
     [
@@ -140,7 +144,7 @@ async function finishRegistration(bot: Telegraf, chatId: number, state: UserStat
 
     await bot.telegram.sendMessage(
       config.ADMIN_CHAT_ID,
-      `📝 *${isExisting ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${state.name}\n📧 ${email}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}${persona ? `\n\n📄 AI Persona:\n${persona.slice(0, 400)}${persona.length > 400 ? '...' : ''}` : ''}`,
+      `📝 *${isExisting ? 'Қайта тіркелу (бұрыннан бар)' : 'Жаңа клиент тіркелді'}*\n\n👤 ${esc(state.name ?? '')}\n📧 ${esc(email)}\n🆔 Chat: ${chatId}\n🏢 Tenant: ${tenantId}${persona ? `\n\n📄 AI Persona:\n${persona.slice(0, 400)}${persona.length > 400 ? '...' : ''}` : ''}`,
       { parse_mode: 'Markdown' },
     )
   } catch (err) {
